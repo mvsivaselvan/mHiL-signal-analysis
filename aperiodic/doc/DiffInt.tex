@@ -1,0 +1,297 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Optimal Control-Based Estimation of Velocity and Derivatives from Noisy Signals}
+\author{}
+\date{July 24, 2025}
+
+\begin{document}
+
+\maketitle
+
+\section{Velocity estimation from displacement and acceleration}
+
+We are given a (possibly noisy) displacement signal $x_m(t)$ and acceleration signal $u_m(t)$, 
+and seek to estimate the true velocity $v(t)$. 
+We pose the problem as an optimal control problem with a second-order linear differential constraint:
+\begin{align*}
+    \textbf{States:} \quad & x(t), \quad v(t) \\
+    \textbf{Dynamics:} \quad & \dot{x}(t) = v(t), \quad \dot{v}(t) = u(t) \\
+    \textbf{Objective:} \quad & \min_{u(t)} \int_0^T \left( Q (x(t) - x_m(t))^2 + (u(t) - u_m(t))^2 \right) dt
+\end{align*}
+Here, $u(t)$ is the control (jerk), and $Q$ weights fidelity to displacement. 
+We adopt the convention $R = 1$ for control effort, and so $Q$ is the tuning parameter.
+
+\section{Derivative estimation from noisy signal}
+
+Given a signal $x_m(t)$, we estimate its derivative $v(t) = \dot{x}(t)$, 
+by penalizing deviation from $x_m(t)$ and control effort:
+\begin{align*}
+    \textbf{State:} \quad & x(t) \\
+    \textbf{Dynamics:} \quad & \dot{x}(t) = u(t) \\
+    \textbf{Objective:} \quad & \min_{u(t)} \int_0^T \left( Q (x(t) - x_m(t))^2 + u(t)^2 \right) dt
+\end{align*}
+This corresponds to Tikhonov regularization or total variation filtering.
+
+\section{Unified problem form}
+
+We consider a general linear system
+\[
+\dot{x}(t) = A x(t) + B u(t), \quad y(t) = C x(t)
+\]
+with a measured signal $y_m(t)$ and the following cost:
+\[
+J = \int_0^T \left( Q (C x(t) - y_m(t))^2 + u(t)^2 \right) dt
+\]
+This general form encompasses both velocity and derivative estimation.
+
+\section{Solution using differential Riccati Equation}
+
+\subsection*{Pros}
+\begin{itemize}[noitemsep]
+    \item Provides optimal time-varying gain.
+    \item Can handle nonzero input $u_m$ naturally.
+\end{itemize}
+
+\subsection*{Cons}
+\begin{itemize}[noitemsep]
+    \item Requires solving backward-in-time Riccati equation.
+    \item Costly for long time horizons.
+\end{itemize}
+
+\subsection*{Formulation}
+This section outlines the finite-horizon optimal tracking problem 
+and its solution via the differential Riccati equation. 
+We assume a linear system with quadratic tracking cost, 
+free initial and final states, and no terminal cost. 
+The optimal solution is derived using Pontryagin’s Maximum Principle (PMP) and the Riccati ansatz.
+
+\subsubsection*{1. Cost Function}
+
+Minimize the quadratic tracking cost:
+\begin{equation}
+J = \int_0^T \left[(C x(t) - x_m(t))^\top Q (C x(t) - x_m(t)) + (u(t) - u_m(t))^\top R (u(t) - u_m(t))\right] dt
+\end{equation}
+with:
+\begin{itemize}
+    \item \(x(t) \in \mathbb{R}^n\): state,
+    \item \(u(t) \in \mathbb{R}^m\): control input,
+    \item \(x_m(t), u_m(t)\): desired state and control trajectories,
+    \item \(Q \succeq 0\), \(R \succ 0\): weighting matrices,
+    \item \(C\): output matrix (e.g., \(C = [1\ 0]\) to track position).
+\end{itemize}
+
+\subsubsection*{2. System Dynamics}
+
+\begin{equation}
+\dot{x}(t) = A x(t) + B u(t)
+\end{equation}
+with initial and terminal conditions:
+\begin{itemize}
+    \item \(x(0)\): free,
+    \item \(x(T)\): free,
+    \item no terminal cost.
+\end{itemize}
+
+\subsubsection*{3. Hamiltonian}
+
+\begin{equation}
+\mathcal{H}(x, u, \lambda, t) = (C x - x_m)^\top Q (C x - x_m) + (u - u_m)^\top R (u - u_m) + \lambda^\top (A x + B u)
+\end{equation}
+
+\subsubsection*{4. Pontryagin’s Necessary Conditions}
+
+\begin{align}
+\dot{x} &= \frac{\partial \mathcal{H}}{\partial \lambda} = A x + B u \\
+\dot{\lambda} &= -\frac{\partial \mathcal{H}}{\partial x} = -C^\top Q (C x - x_m) - A^\top \lambda \\
+0 &= \frac{\partial \mathcal{H}}{\partial u} = 2 R (u - u_m) + B^\top \lambda
+\end{align}
+Solving for the optimal control:
+\begin{equation}
+u(t) = u_m(t) - \tfrac{1}{2} R^{-1} B^\top \lambda(t)
+\end{equation}
+
+\subsubsection*{5. Boundary Conditions from PMP}
+
+Since \(x(0)\) and \(x(T)\) are free, the transversality conditions from PMP yield:
+\begin{equation}
+\lambda(0) = 0, \qquad \lambda(T) = 0
+\end{equation}
+These provide the full set of \(2n\) boundary conditions for the TPBVP in \(x(t)\), \(\lambda(t)\).
+
+\subsubsection*{6. Riccati Transformation}
+
+We make the ansatz:
+\begin{equation}
+\lambda(t) = P(t) x(t) + s(t)
+\end{equation}
+with \(P(t) \in \mathbb{R}^{n \times n}\), \(s(t) \in \mathbb{R}^n\), time-varying.
+
+\subsubsection*{7. Endpoint Conditions for \(P(T)\), \(s(T)\)}
+
+From \(\lambda(T) = P(T)x(T) + s(T) = 0\) for all \(x(T)\), we conclude:
+\begin{equation}
+P(T) = 0, \qquad s(T) = 0
+\end{equation}
+These serve as terminal conditions for the Riccati equations.
+
+\subsubsection*{8. Riccati Equations}
+
+Substituting the ansatz into the costate dynamics yields the differential Riccati equations:
+\begin{align}
+-\dot{P} &= A^\top P + P A - P B R^{-1} B^\top P + C^\top Q C \\
+-\dot{s} &= (A - B R^{-1} B^\top P)^\top s - C^\top Q x_m + P B R^{-1} R u_m
+\end{align}
+with:
+\begin{equation}
+P(T) = 0, \qquad s(T) = 0
+\end{equation}
+
+\subsubsection*{9. Optimal Control}
+
+Using \(\lambda(t) = P(t)x(t) + s(t)\), the control becomes:
+\begin{equation}
+u(t) = u_m(t) - R^{-1} B^\top (P(t) x(t) + s(t))
+\end{equation}
+
+\subsubsection*{10. Forward Integration and Initial Condition}
+
+Forward-integrate the system dynamics:
+\begin{equation}
+\dot{x}(t) = A x(t) + B u(t)
+\end{equation}
+To determine the free initial state \(x(0)\), apply the condition \(\lambda(0) = 0\):
+\begin{equation}
+0 = \lambda(0) = P(0)x(0) + s(0) \quad \Rightarrow \quad x(0) = -P(0)^{-1} s(0)
+\end{equation}
+This uniquely determines the optimal initial state.
+
+\section{Solution using quadratic programming (QP) approach}
+
+\subsection*{Pros}
+\begin{itemize}[noitemsep]
+    \item Simple to implement.
+    \item Easy to incorporate constraints.
+\end{itemize}
+
+\subsection*{Cons}
+\begin{itemize}[noitemsep]
+    \item Discretization error.
+    \item May be slower for large systems.
+\end{itemize}
+
+\subsection*{Time Discretization}
+
+Let $t_k = kh$, $k = 0, \dots, N$ with uniform spacing $h$. 
+Using the trapezoidal (central difference) rule:
+\begin{equation*}
+    \frac{x_{k+1}-x_k}{h} = A\frac{x_{k+1}+x_k}{2} + B\frac{u_{k+1}+u_k}{2}
+\end{equation*}
+from which,
+\begin{equation*}
+    \left(I - \frac{h}{2}A\right)x_{k+1} - \left(I + \frac{h}{2}A\right)x_k - \frac{h}{2}Bu_{k+1} - \frac{h}{2}Bu_k = 0
+\end{equation*}
+These form the equality contraints in the QP.
+
+\subsection*{Discretized Cost}
+
+\[
+J = \sum_k h \left[ Q (x_k - x_{m,k})^2 + (u_k - u_{m,k})^2 \right]
+\]
+\subsection*{QP Form}
+
+Minimize:
+\[
+\frac{1}{2} z^\top H z + f^\top z
+\]
+subject to:
+\[
+A_{eq} z = b_{eq}
+\]
+Here $z$ stacks all $x_k$ and $u_k$, and $H$, $f$ are formed from the discretized cost.
+
+\subsection*{Relation to Costate}
+
+The Lagrange multipliers of the QP correspond to the discrete-time costates in the Riccati formulation.
+
+\section{Riccati solution of the derivative problem}
+This is a special case of the general process above,
+but some special steps warrant attention.
+First, a large $Q$ is found to be necessary, and so to avoid large numbers, 
+the cost is rewritten as 
+\begin{equation*}
+    (x-x_m)^2 + \rho u^2
+\end{equation*}
+where $\rho = 1/q$. The differential equation is simply $\dot{x} = u$.
+\begin{enumerate}
+    \item Hamiltonian:
+        \begin{equation*}
+            \mathcal{H} = (x-x_m)^2 + \rho u^2 + \lambda u
+        \end{equation*}
+    \item Hamiltonian equations
+        \begin{align*}
+            \dot{\lambda} &= -\frac{\partial\mathcal{H}}{\partial x} = -2(x - x_m) \\
+            \dot{x} &= \frac{\partial\mathcal{H}}{\partial\lambda} = u \\
+            \frac{\partial\mathcal{H}}{\partial u} = 0 &\implies u = -\frac{\lambda}{2\rho}
+        \end{align*}
+    \item Riccati transformation
+        \begin{equation*}
+            \lambda = P x + s
+        \end{equation*}
+        \begin{align*}
+            \dot{\lambda} &= \dot{P} x + P\dot{x} + \dot{s} \\
+                          &= \dot{P} x + Pu + \dot{s} \\
+                          &= \dot{P} x - \frac{P \lambda}{2\rho} + \dot{s} \\
+                          &= \dot{P} x - \frac{P (P x + s)}{2\rho} + \dot{s} \\
+                          &= \left(\dot{P} - \frac{P^2}{2\rho}\right)x + \left(\dot{s}-\frac{P s}{2\rho}\right) \\
+                          &= -2x + 2x_m
+        \end{align*}
+\end{enumerate}
+Equating coefficients of equal powers of $x$ on both sides,
+\begin{align*}
+    \dot{P} &= -2 + \frac{P^2}{2\rho} \\
+    \dot{s} &= \frac{P}{2\rho}s + 2 x_m
+\end{align*}
+Since $x(0)$ and $x(T)$ are both free, by PMP, $\lambda(0) = \lambda(T) = 0$
+Using $\lambda(T) = 0$, we have $P(T) = 0$ and $s(T) = 0$.
+Since the differential equation for $P$ is stiff (small $\rho$ in the denominator), 
+there is difficulty integrating it numerically. The differential equation
+for $P$ together with the terminal condition $P(T) = 0$ can be solved 
+analytically (for example, using Mathematica)
+\begin{equation*}
+    P(t) = 2\sqrt{\rho} \tanh\left(\frac{T-t}{\sqrt{\rho}}\right)
+\end{equation*}
+The differential equation for $s$ can be integrated backwards 
+with the terminal condition $s(T) = 0$ (see below).
+Then the differential equation for $x$,
+\begin{equation*}
+    \dot{x} = u = -\frac{\lambda}{2\rho} = -\frac{Px + s}{2\rho}
+\end{equation*}
+can be integrated forward with $x(0) = -\frac{P(0)}{s(0)}$,
+which comes from $\lambda(0) = 0$.
+
+\section{Integrating a differential equation backward in time}
+Suppose we want to integrate the differential equation
+\begin{equation*}
+    \dot{x}(t) = f(t,x(t))
+\end{equation*}
+backwards in time with the terminal condition, $x(T) = x_T$.
+
+Introduce the variable, $\tau = T-t$, and the function $\tilde{x}(\tau) = x(t(\tau))$.
+Then $t(\tau) = T-\tau$, and $t'(\tau) = -1$.
+
+$\tilde{x}'(\tau) = \dot{x}(t(\tau))t'(\tau) = -\dot{x}(t(\tau)) = -f(t(\tau),x(t(\tau))$.
+
+We thus have
+\begin{equation*}
+    \tilde{x}'(\tau) = -f(T-\tau,\tilde{x}(\tau))
+\end{equation*}
+with $\tilde{x}(0) = x(T-0) = x_T$
+Integrate $\tilde{x}$ from $0$ to $T$, reverse in time (\texttt{flipud}) to get $x$.
+
+\end{document}
