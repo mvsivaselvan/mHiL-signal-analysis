@@ -14,6 +14,8 @@ mVS = IVS/larm^2; % lb-s^2/in
 w = sqrt(kVS/mVS); % rad/s
 mtower = Itower/larm^2;
 m = mtower;
+h = 80; %% tower height from cruciform, in
+
 %% target VS
 AVS = [0 1; -w^2 -2*zet*w];
 BVS = [0 0 ;1/mVS -mbar*hCM/mVS/larm]; %% (mbar*hCM/mVS/larm)
@@ -49,9 +51,10 @@ ssAVS=connect(ssVS, ssActCont,S1,{'w','uext'},{'x','v','F','xv','xC1','xC2','e',
 
 %% equation by equation check
 x_m = datatab.displ;
-u_m = datatab.accel*larm/h*386.4;
-Q = 0.001;
-[x_est_qp, a_est_qp] = estimate_velocity_qp(t, x_m, u_m, Q); %%% using qp
+u_m = (datatab.accel-datatab.accel(1))*larm/h*386.4;
+Q = 100;
+t = datatab.t;
+% [x_est_qp, a_est_qp] = estimate_velocity_qp(t, x_m, u_m, Q); %%% using qp
 [x_est_ric, a_est_ric] = estimate_velocity_differential_riccati(t, x_m, u_m, Q); %%% using riccati
 
 % figure(201),
@@ -77,69 +80,59 @@ figure(201),
 figure(202),
     plot(t, x_est_ric(:,2)),
     grid on
-    legend('qp', 'ric')
+    legend('ric')
     title('velocity')
 figure(203),
-    plot(t, [u_m, a_est_ric]),
+    plot(t,u_m,'r',t, a_est_ric,'b--'),
     grid on
-    legend('measured', 'qp', 'ric')
+    legend('measured', 'ric')
     title('acceleration')
-
-Q = 1e7;
+%%
+Q = 1e5;
 % [x_est_ric, u_est_ric] = estimate_derivative_differential_riccati(t, x_m, Q);
-x_m = F;
-[F_est_qp, Fdot_est_qp] = estimate_derivative_qp(t, x_m, Q);
+x_m = datatab.F;
+% [F_est_qp, Fdot_est_qp] = estimate_derivative_qp(t, x_m, Q);
 [F_est_ric, Fdot_est_ric] = estimate_derivative_differential_riccati_analytic(t, x_m, 1/Q);
 figure(101),
-    plot(t, [u_exact Fdot_est_qp Fdot_est_ric]),
+    plot(t, Fdot_est_ric),
     grid on
-    legend('exact', 'qp', 'ric'),
+    legend('exact', 'ric'),
     title('derivative')
 figure(102),
-    plot(t, [x_m F_est_qp F_est_ric]),
+    plot(t, [x_m F_est_ric]),
     grid on
-    legend('exact', 'qp', 'ric')
+    legend('exact', 'ric')
     title('signal')
-
-[S1_est_qp, S1dot_est_qp] = estimate_derivative_qp(t, State1, Q);
-[S1_est_ric, S1dot_est_ric] = estimate_derivative_differential_riccati_analytic(t, State1, 1/Q);
+%%
+Q = 1e5;
+% [S1_est_qp, S1dot_est_qp] = estimate_derivative_qp(t, State1, Q);
+[S1_est_ric, S1dot_est_ric] = estimate_derivative_differential_riccati_analytic(t, datatab.State1, 1/Q);
 figure(401),
-    plot(t, [S1dot_est_qp S1dot_est_ric]),
+    plot(t, S1dot_est_ric),
     grid on
     legend('qp', 'ric'),
     title('derivative')
 figure(402),
-    plot(t, [State1 S1_est_qp S1_est_ric]),
+    plot(t, [State1 S1_est_ric]),
     grid on
-    legend('exact', 'qp', 'ric')
+    legend('exact', 'ric')
     title('signal')
 
-[S2_est_qp, S2dot_est_qp] = estimate_derivative_qp(t, State2, Q);
-[S2_est_ric, S2dot_est_ric] = estimate_derivative_differential_riccati_analytic(t, State2, 1/Q);
+% [S2_est_qp, S2dot_est_qp] = estimate_derivative_qp(t, State2, Q);
+[S2_est_ric, S2dot_est_ric] = estimate_derivative_differential_riccati_analytic(t, datatab.State2, 1/Q);
 figure(501),
-    plot(t, [S2dot_est_qp S2dot_est_ric]),
+    plot(t, S2dot_est_ric),
     grid on
-    legend('qp', 'ric'),
+    legend('ric'),
     title('derivative')
 figure(502),
-    plot(t, [State2 S2_est_qp S2_est_ric]),
+    plot(t, [State2 S2_est_ric]),
     grid on
-    legend('exact', 'qp', 'ric')
+    legend('exact','ric')
     title('signal')
 
-[S3_est_qp, S1dot_est_qp] = estimate_derivative_qp(t, State1, Q);
-[S3_est_ric, S1dot_est_ric] = estimate_derivative_differential_riccati_analytic(t, State1, 1/Q);
-figure(401),
-    plot(t, [S3dot_est_qp S3dot_est_ric]),
-    grid on
-    legend('qp', 'ric'),
-    title('derivative')
-figure(402),
-    plot(t, [State3 S3_est_qp S3_est_ric]),
-    grid on
-    legend('exact', 'qp', 'ric')
-    title('signal')
 
+%%
 sys = tf(alph, [1 alph]);
 xv = lsim(sys, u, t);
 thetaddot = a/h;
@@ -161,3 +154,19 @@ figure(25), plot([xmeasdot(:,5) rhs(:,5)]), grid on, title('equation 5')
 figure(26), plot([xmeasdot(:,6) rhs(:,6)]), grid on, title('equation 6')
 figure(27), plot([xmeasdot(:,7) rhs(:,7)]), grid on, title('equation 7')
 
+%%
+sys = tf(alph,[1 alph]);
+xv = lsim(sys, datatab.uv, t);
+lhs = Fdot_est_ric;
+rhs = -kact*x_est_ric(:,2)-bet*datatab.F+d*(xv-xv(1));
+
+figure,
+plot(t,[lhs, rhs-mean(rhs)]), grid on,
+%% fit parameters
+Afit = [x_est_ric(:,2) datatab.F xv]\(rhs-mean(rhs));
+figure(303), plot([xmeasdot(:,3) xmeas(:,2:4)*Afit]), grid on,
+AA = A;
+AA(3,2:4) = Afit;
+fprintf('Frequencies and damping ratios of fit model ...\n')
+damp(ss(A,B,eye(1,6),[]))
+[kact bet d]
