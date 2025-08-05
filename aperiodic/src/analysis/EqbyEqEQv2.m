@@ -1,3 +1,6 @@
+addpath ../vel-est-derivative-comp/
+addpath ../../data/
+
 load ControllerTEXVS20020.mat % to get kact, beta, d
 load datatab.mat %%% data for Tower E (5.8Hz, 2%) X, 0.75g CERL
 
@@ -324,3 +327,7 @@ legend('AVS - fit','Measured','EdgeColor','None','Location','northwest','Color',
 pbaspect([4 1 1])
 set(gcf, 'Position',[100 100 950 250])
 xlim([5 46])
+
+%%
+rmpath ../vel-est-derivative-comp/
+rmpath ../../data/
