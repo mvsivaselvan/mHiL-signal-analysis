@@ -52,7 +52,7 @@ ym_data = [datatab.displ ... % actuator displacement
            datatab.F ... % actuator force
            datatab.State1 ... % controller state 1
            datatab.State2]'; % controller state 2
-um_data = [datatab.uext wbar]';
+um_data = [wbar datatab.uext]';
 
 % Create CasADi interpolants
 xm_fun = interpolant('xm','linear',{t_meas}, xm_data(:));
@@ -222,19 +222,57 @@ x_opt = sol.value(X);
 u_opt = sol.value(U);
 p_opt = sol.value(P);
 
+% high-pass filter for post-processing measurement
+[bLP, aLP] = butter(6, 32/fs_meas, 'low'); % 32 Hz cutoff
+
+% high-pass filter for post-processing optimal sol
+[bHP, aHP] = butter(6, 0.5*dt, 'high'); % 0.5 Hz cutoff
+
 y_opt = Cmat*x_opt;
 
 figure(101), 
-    plot(t_meas, datatab.displ, (0:N)*dt, x_opt(1,:))
+    plot(t_meas, xm_data(1,:)-xm_data(1,1), ...
+         (0:N)*dt, filtfilt(bHP,aHP,x_opt(1,:)))
+    title('Displacement (meas offset removed + opt HP filtered)')
 
 figure(102), 
     plot(t_meas, vel_initial, (0:N)*dt, x_opt(2,:))
+    title('Velocity')
 
 figure(103), 
-    plot(t_meas, accel/h*larm*grav, (0:N)*dt, y_opt(2,:)), grid on
+    plot(t_meas, filtfilt(bLP,aLP,accel/h*larm*grav), ...
+         (0:N)*dt, filtfilt(bHP,aHP,y_opt(2,:))), grid on
+    title('Acceleration (meas LP filtered, opt HP filtered)')
 
 figure(201),
-    plot(t_meas, um_data(1,:), (1:N)*dt, u_opt(1,:))
+    plot(t_meas, um_data(1,:)-um_data(1,1), ...
+        (1:N)*dt, filtfilt(bHP,aHP,u_opt(1,:)))
+    title('w input (measu offset removed + opt HP filtered)')
 
 figure(202),
-    plot(t_meas, um_data(2,:), (1:N)*dt, u_opt(2,:))
+    plot(t_meas, um_data(2,:), (1:N)*dt, filtfilt(bHP,aHP,u_opt(2,:)))
+    title('valve input (HP filtered)')
+
+figure(301),
+    plot((1:N)*dt, p_opt(1,:))
+    title('k_{act}')
+
+figure(302),
+    plot((1:N)*dt, p_opt(2,:))
+    title('\beta')
+
+figure(303),
+    plot((1:N)*dt, p_opt(3,:))
+    title('d')
+return
+%% Parameter changes
+% % This is a good set of parameters
+% opti.set_value(Q,diag([1 100 1 1 1]));
+% opti.set_value(R, diag([1 10000]));
+% opti.set_value(rho, diag([0.1 100 0.0001]));
+% sol = opti.solve();
+
+opti.set_value(Q,diag([1 1000 1 1 1]));
+opti.set_value(R, diag([1 10000]));
+opti.set_value(rho, diag([0.1 100 0.0001]));
+sol = opti.solve();
