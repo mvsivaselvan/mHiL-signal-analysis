@@ -211,3 +211,17 @@ opti.minimize(J);
 opti.solver('ipopt');
 
 sol = opti.solve();
+
+X = [X{:}];
+U = [U{:}];
+P = [P{:}];
+
+x_opt = sol.value(X);
+u_opt = sol.value(U);
+p_opt = sol.value(P);
+
+figure(101), 
+    plot(t_meas, datatab.displ, (0:N)*dt, x_opt(1,:))
+
+figure(102), 
+    plot(t_meas, vel_initial, (0:N)*dt, x_opt(2,:))
