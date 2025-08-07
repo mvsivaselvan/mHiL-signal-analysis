@@ -28,8 +28,9 @@ t_meas = (0:length(accel)-1)'/fs_meas;
 % displcaement and acceleration
 addpath ../vel-est-derivative-comp/
 [x_est_ric, ~] = estimate_velocity_differential_riccati(t_meas, ...
-                                                        datatab.displ, ...
-                                                        accel, 100); %Q=100
+                                                  datatab.displ, ...
+                                                  accel*larm/h*grav, ...
+                                                  100); %Q=100
 vel_initial = x_est_ric(:,2);
 clear x_est_ric
 rmpath ../vel-est-derivative-comp/
@@ -155,8 +156,8 @@ for k = 1:N
     end
 
     % Input and parameters for interval (k-1, k)
-    Uk = opti.variable(nu); U{k} = Uk;
-    Pk = opti.variable(np); P{k} = Pk;
+    Uk = opti.variable(nu); U{k} = Uk; opti.set_initial(Uk, um_fun(k*dt));
+    Pk = opti.variable(np); P{k} = Pk; opti.set_initial(Pk, p_nom);
     
     % Collocation states
     Xc = cell(deg,1);
@@ -216,12 +217,24 @@ X = [X{:}];
 U = [U{:}];
 P = [P{:}];
 
+%% Plot optimal solution
 x_opt = sol.value(X);
 u_opt = sol.value(U);
 p_opt = sol.value(P);
+
+y_opt = Cmat*x_opt;
 
 figure(101), 
     plot(t_meas, datatab.displ, (0:N)*dt, x_opt(1,:))
 
 figure(102), 
     plot(t_meas, vel_initial, (0:N)*dt, x_opt(2,:))
+
+figure(103), 
+    plot(t_meas, accel/h*larm*grav, (0:N)*dt, y_opt(2,:)), grid on
+
+figure(201),
+    plot(t_meas, um_data(1,:), (1:N)*dt, u_opt(1,:))
+
+figure(202),
+    plot(t_meas, um_data(2,:), (1:N)*dt, u_opt(2,:))
