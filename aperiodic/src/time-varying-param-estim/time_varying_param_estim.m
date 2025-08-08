@@ -26,14 +26,19 @@ t_meas = (0:length(accel)-1)'/fs_meas;
 
 % construct initial guess for velocity by estimating from measured
 % displcaement and acceleration
-addpath ../vel-est-derivative-comp/
-[x_est_ric, ~] = estimate_velocity_differential_riccati(t_meas, ...
+if (~isfile('velocity_initial.mat'))
+    addpath ../vel-est-derivative-comp/
+    [x_est_ric, ~] = estimate_velocity_differential_riccati(t_meas, ...
                                                   datatab.displ, ...
                                                   accel*larm/h*grav, ...
                                                   100); %Q=100
-vel_initial = x_est_ric(:,2);
-clear x_est_ric
-rmpath ../vel-est-derivative-comp/
+    vel_initial = x_est_ric(:,2);
+    clear x_est_ric
+    rmpath ../vel-est-derivative-comp/
+    save velocity_inital vel_initial
+else
+    load('velocity_initial.mat')
+end
 
 % construct initial guess for xv by integrating xvdot
 sysxv = tf(alph,[1 alph]);
@@ -53,6 +58,14 @@ ym_data = [datatab.displ ... % actuator displacement
            datatab.State1 ... % controller state 1
            datatab.State2]'; % controller state 2
 um_data = [wbar datatab.uext]';
+
+% pre-processing low pass filter data and remove offset
+% low-pass filtering is so that optimization does not attempt "silly" fast
+% control input to track high-frequency content that model has no chance of
+% tracking - nonlinearity, higher-mode dynamics and noise
+xm_data = prepdata(xm_data, 32, fs_meas);
+ym_data = prepdata(ym_data, 32, fs_meas);
+um_data = prepdata(um_data, 32, fs_meas);
 
 % Create CasADi interpolants
 xm_fun = interpolant('xm','linear',{t_meas}, xm_data(:));
@@ -222,7 +235,7 @@ x_opt = sol.value(X);
 u_opt = sol.value(U);
 p_opt = sol.value(P);
 
-% high-pass filter for post-processing measurement
+% low-pass filter for post-processing measurement
 [bLP, aLP] = butter(6, 32/fs_meas, 'low'); % 32 Hz cutoff
 
 % high-pass filter for post-processing optimal sol
@@ -231,27 +244,36 @@ p_opt = sol.value(P);
 y_opt = Cmat*x_opt;
 
 figure(101), 
-    plot(t_meas, xm_data(1,:)-xm_data(1,1), ...
-         (0:N)*dt, filtfilt(bHP,aHP,x_opt(1,:)))
-    title('Displacement (meas offset removed + opt HP filtered)')
+    plot(t_meas, xm_data(1,:), (0:N)*dt, filtfilt(bHP,aHP,x_opt(1,:)))
+    title('Displacement')
 
 figure(102), 
-    plot(t_meas, vel_initial, (0:N)*dt, x_opt(2,:))
+    plot(t_meas, xm_data(2,:), (0:N)*dt, x_opt(2,:))
     title('Velocity')
 
 figure(103), 
-    plot(t_meas, filtfilt(bLP,aLP,accel/h*larm*grav), ...
-         (0:N)*dt, filtfilt(bHP,aHP,y_opt(2,:))), grid on
-    title('Acceleration (meas LP filtered, opt HP filtered)')
+    plot(t_meas, ym_data(2,:), (0:N)*dt, y_opt(2,:)), grid on
+    title('Acceleration')
+
+figure(104),
+    plot(t_meas, ym_data(3,:), (0:N)*dt, y_opt(3,:)), grid on
+    title('Actuator force')
+
+figure(105),
+    plot(t_meas, ym_data(4,:), (0:N)*dt, y_opt(4,:)), grid on
+    title('Controller state 1')
+
+figure(106),
+    plot(t_meas, ym_data(5,:), (0:N)*dt, y_opt(5,:)), grid on
+    title('Controller state 2')
 
 figure(201),
-    plot(t_meas, um_data(1,:)-um_data(1,1), ...
-        (1:N)*dt, filtfilt(bHP,aHP,u_opt(1,:)))
-    title('w input (measu offset removed + opt HP filtered)')
+    plot(t_meas, um_data(1,:), (1:N)*dt, u_opt(1,:))
+    title('w input')
 
 figure(202),
-    plot(t_meas, um_data(2,:), (1:N)*dt, filtfilt(bHP,aHP,u_opt(2,:)))
-    title('valve input (HP filtered)')
+    plot(t_meas, um_data(2,:), (1:N)*dt, u_opt(2,:))
+    title('valve input')
 
 figure(301),
     plot((1:N)*dt, p_opt(1,:))
@@ -266,13 +288,7 @@ figure(303),
     title('d')
 return
 %% Parameter changes
-% % This is a good set of parameters
-% opti.set_value(Q,diag([1 100 1 1 1]));
-% opti.set_value(R, diag([1 10000]));
-% opti.set_value(rho, diag([0.1 100 0.0001]));
-% sol = opti.solve();
-
-opti.set_value(Q,diag([1 1000 1 1 1]));
-opti.set_value(R, diag([1 10000]));
-opti.set_value(rho, diag([0.1 100 0.0001]));
+opti.set_value(Q,diag([1e6 1 1 1 1]));
+opti.set_value(R, diag([1 1]));
+opti.set_value(rho, diag([1 1 1e-12]));
 sol = opti.solve();
