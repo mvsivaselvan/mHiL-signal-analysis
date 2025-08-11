@@ -83,7 +83,7 @@ tau = collocation_points(deg, 'legendre');
 [C,D,B] = collocation_coeff(tau);
 
 % Dimensions
-nx = 6; ny = 5; nu = 2; np = 3;
+nx = 6; ny = 5; nu = 2; np = 1;
 
 % Declare model variables
 x1 = MX.sym('x');
@@ -94,13 +94,14 @@ x5 = MX.sym('xc1');
 x6 = MX.sym('xc2');
 u1 = MX.sym('w');
 u2 = MX.sym('uext');
-p1 = MX.sym('kact');
-p2 = MX.sym('bet');
 p3 = MX.sym('d');
 t = MX.sym('t');
 x = [x1; x2; x3; x4; x5; x6];
 u = [u1; u2];
-p = [p1; p2; p3];
+
+% Nominal fixed parameters
+p1_nom = kact; 
+p2_nom = bet;
 
 % System matrices
 Ac = controller.A;
@@ -110,7 +111,7 @@ Dc = controller.D;
 Amat = MX(6,6);
 Amat(1,2) = 1;
 Amat(2,3) = 1/m;
-Amat(3,2:4) = [-p1 -p2 p3];
+Amat(3,2:4) = [-p1_nom -p2_nom p3];
 Amat(4,[1 3:6]) = [alph*Dc -alph alph*Cc];
 Amat(5:6,5:6) = Ac;
 Amat(5:6,[1 3]) = Bc;
@@ -130,7 +131,7 @@ Dmat = [0   0; ...   % displacement
 
 % Model equation
 xdot = Amat*x + Bmat*u;
-f = Function('f',{x,u,p},{xdot});
+f = Function('f',{x,u,p3},{xdot});
 
 % Get an instance of Opti
 opti = Opti();
@@ -138,17 +139,9 @@ opti = Opti();
 % Cost function matrices
 Q = opti.parameter(5,5);
 opti.set_value(Q,diag([1e6 1 1 1 1]));
-R = opti.parameter(2,2);
-opti.set_value(R, diag([1 1]));
-rho = opti.parameter(3,3);
-opti.set_value(rho, diag([1 1 1]));
-p_nom = [kact; bet; d];
-
-% Cost function
-e_y = Cmat*x + Dmat*u - ym_fun(t);
-e_u = u - um_fun(t);
-e_p = p - [kact; bet; d];
-L = e_y'*Q*e_y + e_u'*R*e_u + e_p'*rho*e_p;
+rho = opti.parameter(1,1);
+opti.set_value(rho, 1);
+p3_nom = d;
 
 % Time horizon
 T = 45;
@@ -158,7 +151,7 @@ dt = 0.01;
 N = T/dt;
 
 % Decision variables and cost
-X = cell(N+1,1); U = cell(N,1); P = cell(N,1);
+X = cell(N+1,1); P = cell(N,1);
 J = 0;
 
 % Initial condition
@@ -170,8 +163,7 @@ for k = 1:N
     end
 
     % Input and parameters for interval (k-1, k)
-    Uk = opti.variable(nu); U{k} = Uk; opti.set_initial(Uk, um_fun(k*dt));
-    Pk = opti.variable(np); P{k} = Pk; opti.set_initial(Pk, p_nom);
+    Pk = opti.variable(np); P{k} = Pk; opti.set_initial(Pk, p3_nom);
     
     % Collocation states
     Xc = cell(deg,1);
@@ -191,7 +183,9 @@ for k = 1:N
         for r = 1:deg
             xp = xp + Xc{r}*C(r+1,j);
         end
-        fj = f(Xc{j}, Uk, Pk);
+        t_j = (k-1 + tau(j))*dt;
+        u_mj = um_fun(t_j); % fixed measured input
+        fj = f(Xc{j}, u_mj, Pk);        
         opti.subject_to(dt * fj == xp);
         Xk_end = Xk_end + Xc{j}*D(j+1);
     end
@@ -208,15 +202,12 @@ for k = 1:N
         y_mj = ym_fun(t_j);  % ny × 1
         u_mj = um_fun(t_j);  % nu × 1
         
-        y_pred = Cmat * Xc{j} + Dmat * Uk;
+        y_pred = Cmat * Xc{j} + Dmat * u_mj;
         
         e_y = y_pred - y_mj;
-        e_u = Uk - u_mj;
-        e_p = Pk - p_nom;
+        e_p = Pk - p3_nom;
         
-        integrand = e_y' * Q * e_y + ...
-                    e_u' * R * e_u + ...
-                    e_p' * rho * e_p;
+        integrand = e_y' * Q * e_y + e_p' * rho * e_p;
         J = J + B(j) * dt * integrand;
     end
 end
@@ -228,12 +219,10 @@ opti.solver('ipopt');
 sol = opti.solve();
 
 X = [X{:}];
-U = [U{:}];
 P = [P{:}];
-
+return
 %% Plot optimal solution
 x_opt = sol.value(X);
-u_opt = sol.value(U);
 p_opt = sol.value(P);
 
 % low-pass filter for post-processing measurement
@@ -272,30 +261,16 @@ figure(107),
     plot(t_meas, xm_data(4,:), (0:N)*dt, x_opt(4,:)), grid on
     title('x_v')
 
-figure(201),
-    plot(t_meas, um_data(1,:), (1:N)*dt, u_opt(1,:))
-    title('w input')
-
-figure(202),
-    plot(t_meas, um_data(2,:), (1:N)*dt, u_opt(2,:))
-    title('valve input')
-
-figure(301),
-    plot((1:N)*dt, p_opt(1,:))
-    title('k_{act}')
-
-figure(302),
-    plot((1:N)*dt, p_opt(2,:))
-    title('\beta')
-
 figure(303),
-    plot((1:N)*dt, p_opt(3,:))
+    plot((1:N)*dt, p_opt)
     title('d')
 return
 %% Parameter changes
-opti.set_value(Q,diag([1e6 100 1 1 1]));
-opti.set_value(R, diag([10 1e6]));
-opti.set_value(rho, diag([1 100 1e-3]));
+opti.set_value(Q,diag([1e6 1 1 1 1]));
+% opti.set_value(rho, 1e-6); % This setting does the job, but will silly
+                             % fast d variation and apparent poor 
+                             % conditioning-many iterations for convergence 
+opti.set_value(rho, 1e-5);
 sol = opti.solve();
 
 %% Continue
