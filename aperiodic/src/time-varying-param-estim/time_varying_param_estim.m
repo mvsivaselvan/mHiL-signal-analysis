@@ -140,7 +140,7 @@ opti = Opti();
 Q = opti.parameter(5,5);
 opti.set_value(Q,diag([1e6 1 1 1 1]));
 rho = opti.parameter(1,1);
-opti.set_value(rho, 1);
+opti.set_value(rho, 1e-6);
 p3_nom = d;
 
 % Time horizon
@@ -212,6 +212,12 @@ for k = 1:N
     end
 end
 
+alpha = opti.parameter(1,1);
+opti.set_value(alpha, 1e2);
+for k = 1:N-1
+    J = J + alpha * (P{k+1} - P{k})^2 * dt;
+end
+
 opti.minimize(J);
 
 opti.solver('ipopt');
@@ -270,7 +276,8 @@ opti.set_value(Q,diag([1e6 1 1 1 1]));
 % opti.set_value(rho, 1e-6); % This setting does the job, but will silly
                              % fast d variation and apparent poor 
                              % conditioning-many iterations for convergence 
-opti.set_value(rho, 1e-5);
+opti.set_value(rho, 1e-6);
+opti.set_value(alpha, 0.1);
 sol = opti.solve();
 
 %% Continue
