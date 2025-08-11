@@ -5,8 +5,10 @@ function y = prepdata(x, cutoff, fs)
 % cutoff frequency for low pass filter
 % fs = sampling frequency
 
+% first remove offset, then filter to avoid end effects
+y = x - x(:,1);
+
 [b, a] = butter(6, cutoff/fs, 'low');
-y = filtfilt(b, a, x'); % ' since filtfilt operates on the rows
+y = filtfilt(b, a, y'); % ' since filtfilt operates on the rows
 y = y';
 
-y = y-y(:,1);

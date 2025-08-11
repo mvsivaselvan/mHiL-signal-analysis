@@ -22,6 +22,7 @@ accel = (datatab.accel-datatab.accel(1));
 wbar = ((datatab.Fxcalc+mLHE*accel)*h+...
         (datatab.Mycalc+ILH*accel/h))/larm; % conductor force after 
                                             % removing load head inertia
+wbar = wbar - wbar(1);
 t_meas = (0:length(accel)-1)'/fs_meas;
 
 % construct initial guess for velocity by estimating from measured
@@ -35,14 +36,14 @@ if (~isfile('velocity_initial.mat'))
     vel_initial = x_est_ric(:,2);
     clear x_est_ric
     rmpath ../vel-est-derivative-comp/
-    save velocity_inital vel_initial
+    save velocity_initial vel_initial
 else
     load('velocity_initial.mat')
 end
 
 % construct initial guess for xv by integrating xvdot
 sysxv = tf(alph,[1 alph]);
-xv_initial = lsim(sysxv, datatab.uv, t_meas);
+xv_initial = lsim(sysxv, datatab.uv-datatab.uv(1), t_meas);
 clear sysxv
 
 % measured data for interpolation
@@ -136,7 +137,7 @@ opti = Opti();
 
 % Cost function matrices
 Q = opti.parameter(5,5);
-opti.set_value(Q,diag([1 1 1 1 1]));
+opti.set_value(Q,diag([1e6 1 1 1 1]));
 R = opti.parameter(2,2);
 opti.set_value(R, diag([1 1]));
 rho = opti.parameter(3,3);
@@ -267,6 +268,10 @@ figure(106),
     plot(t_meas, ym_data(5,:), (0:N)*dt, y_opt(5,:)), grid on
     title('Controller state 2')
 
+figure(107),
+    plot(t_meas, xm_data(4,:), (0:N)*dt, x_opt(4,:)), grid on
+    title('x_v')
+
 figure(201),
     plot(t_meas, um_data(1,:), (1:N)*dt, u_opt(1,:))
     title('w input')
@@ -288,7 +293,45 @@ figure(303),
     title('d')
 return
 %% Parameter changes
+opti.set_value(Q,diag([1e6 100 1 1 1]));
+opti.set_value(R, diag([10 1e6]));
+opti.set_value(rho, diag([1 100 1e-3]));
+sol = opti.solve();
+
+%% Continue
+opti.set_initial(sol.value_variables());
 opti.set_value(Q,diag([1e6 1 1 1 1]));
-opti.set_value(R, diag([1 1]));
+opti.set_value(R, diag([1 100]));
 opti.set_value(rho, diag([1 1 1e-12]));
 sol = opti.solve();
+
+%% Forward simulation
+fA = casadi.Function('fA',{p},{Amat});
+A__ = full(fA(p_nom));
+sys = ss(A__,Bmat,[Cmat; 0 0 0 1 0 0],[Dmat; 0 0]);
+x_meas = full(xm_fun((0:N)*dt));
+u_meas = full(um_fun((1:N)*dt));
+y_comp_meas = lsim(sys, u_meas, (1:N)*dt);
+y_comp_opt = lsim(sys, u_opt, (1:N)*dt);
+y_comp_mix = lsim(sys, [u_meas(1,:); u_opt(2,:)], (1:N)*dt);
+y_meas = full(ym_fun((1:N)*dt));
+figure(501), 
+    plot((1:N)*dt, y_comp_meas(:,2), 'w-', ...
+         (1:N)*dt, y_comp_mix(:,2), 'r-', ...
+         (1:N)*dt, y_meas(2,:),'b-'), 
+    title('Acceleration')
+    grid on
+uv_opt = Cc*x_opt([5 6],:) + Dc*x_opt([1 3],:) + [u_opt(2,:) 0];
+sysxv = tf(alph,[1 alph]);
+xv_opt = lsim(sysxv, uv_opt, (0:N)*dt);
+figure(502), 
+    plot((0:N)*dt, x_opt(4,:), 'b-', ...
+         (1:N)*dt, y_comp_opt(:,6), 'r-', ...
+         (0:N)*dt, xv_opt, 'k'),
+    title('x_v')
+    grid on
+
+%% Compare physical valve commands
+figure(601),
+    % plot((0:N)*dt,x_meas(4,:),(0:N)*dt,x_opt(4,:))
+    plot(t_meas,xm_data(4,:),(0:N)*dt,x_opt(4,:))
