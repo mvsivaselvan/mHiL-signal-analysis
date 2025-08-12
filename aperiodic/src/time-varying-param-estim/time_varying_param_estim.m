@@ -237,7 +237,8 @@ p_opt = sol.value(P);
 % high-pass filter for post-processing optimal sol
 [bHP, aHP] = butter(6, 0.5*dt, 'high'); % 0.5 Hz cutoff
 
-y_opt = Cmat*x_opt;
+u__ = interp1(t_meas, um_data', (0:N)*dt)';
+y_opt = Cmat*x_opt + Dmat*u__;
 
 figure(101), 
     plot(t_meas, xm_data(1,:), (0:N)*dt, filtfilt(bHP,aHP,x_opt(1,:)))
