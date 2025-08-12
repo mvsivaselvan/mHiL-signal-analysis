@@ -213,7 +213,7 @@ for k = 1:N
 end
 
 alpha = opti.parameter(1,1);
-opti.set_value(alpha, 1e2);
+opti.set_value(alpha, 0.1);
 for k = 1:N-1
     J = J + alpha * (P{k+1} - P{k})^2 * dt;
 end
@@ -226,7 +226,7 @@ sol = opti.solve();
 
 X = [X{:}];
 P = [P{:}];
-return
+
 %% Plot optimal solution
 x_opt = sol.value(X);
 p_opt = sol.value(P);
@@ -267,53 +267,13 @@ figure(107),
     plot(t_meas, xm_data(4,:), (0:N)*dt, x_opt(4,:)), grid on
     title('x_v')
 
-figure(303),
+figure(301),
     plot((1:N)*dt, p_opt)
     title('d')
-return
-%% Parameter changes
-opti.set_value(Q,diag([1e6 1 1 1 1]));
-% opti.set_value(rho, 1e-6); % This setting does the job, but will silly
-                             % fast d variation and apparent poor 
-                             % conditioning-many iterations for convergence 
-opti.set_value(rho, 1e-6);
-opti.set_value(alpha, 0.1);
-sol = opti.solve();
 
-%% Continue
-opti.set_initial(sol.value_variables());
-opti.set_value(Q,diag([1e6 1 1 1 1]));
-opti.set_value(R, diag([1 100]));
-opti.set_value(rho, diag([1 1 1e-12]));
-sol = opti.solve();
-
-%% Forward simulation
-fA = casadi.Function('fA',{p},{Amat});
-A__ = full(fA(p_nom));
-sys = ss(A__,Bmat,[Cmat; 0 0 0 1 0 0],[Dmat; 0 0]);
-x_meas = full(xm_fun((0:N)*dt));
-u_meas = full(um_fun((1:N)*dt));
-y_comp_meas = lsim(sys, u_meas, (1:N)*dt);
-y_comp_opt = lsim(sys, u_opt, (1:N)*dt);
-y_comp_mix = lsim(sys, [u_meas(1,:); u_opt(2,:)], (1:N)*dt);
-y_meas = full(ym_fun((1:N)*dt));
-figure(501), 
-    plot((1:N)*dt, y_comp_meas(:,2), 'w-', ...
-         (1:N)*dt, y_comp_mix(:,2), 'r-', ...
-         (1:N)*dt, y_meas(2,:),'b-'), 
-    title('Acceleration')
-    grid on
-uv_opt = Cc*x_opt([5 6],:) + Dc*x_opt([1 3],:) + [u_opt(2,:) 0];
-sysxv = tf(alph,[1 alph]);
-xv_opt = lsim(sysxv, uv_opt, (0:N)*dt);
-figure(502), 
-    plot((0:N)*dt, x_opt(4,:), 'b-', ...
-         (1:N)*dt, y_comp_opt(:,6), 'r-', ...
-         (0:N)*dt, xv_opt, 'k'),
-    title('x_v')
-    grid on
-
-%% Compare physical valve commands
-figure(601),
-    % plot((0:N)*dt,x_meas(4,:),(0:N)*dt,x_opt(4,:))
-    plot(t_meas,xm_data(4,:),(0:N)*dt,x_opt(4,:))
+figure(302),
+    xv = x_opt(4,1:end-1);
+    g_flow = x_opt(4,1:end-1).*p_opt;
+    plot(xv,g_flow,'x')
+    title('flow vs xv')
+    save flowfn xv g_flow
