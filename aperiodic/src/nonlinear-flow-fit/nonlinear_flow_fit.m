@@ -27,7 +27,7 @@ t_meas = (0:length(accel)-1)'/fs_meas;
 
 addpath ../time-varying-param-estim/ % for velocity_initial and prepdata
 % construct initial guess for velocity by estimating from measured
-% displcaement and acceleration
+% displacement and acceleration
 if (~isfile('velocity_initial.mat'))
     addpath ../vel-est-derivative-comp/
     [x_est_ric, ~] = estimate_velocity_differential_riccati(t_meas, ...
@@ -70,6 +70,46 @@ ym_data = prepdata(ym_data, 32, fs_meas);
 um_data = prepdata(um_data, 32, fs_meas);
 rmpath ../time-varying-param-estim/
 
+% System matrices
+Ac = controller.A;
+Bc = controller.B;
+Cc = controller.C;
+Dc = controller.D;
+Amat = zeros(6);
+Amat(1,2) = 1;
+Amat(2,3) = 1/m;
+Amat(3,2:4) = [-kact -bet d];
+Amat(4,[1 3:6]) = [alph*Dc -alph alph*Cc];
+Amat(5:6,5:6) = Ac;
+Amat(5:6,[1 3]) = Bc;
+Bmat = zeros(6,2);
+Bmat(2,1) = 1/m;
+Bmat(4,2) = alph;
+Cmat = [1 0 0   0 0 0; ... % displacement
+        0 0 1/m 0 0 0; ... % acceleration
+        0 0 1   0 0 0; ... % force
+        0 0 0   0 1 0; ... % controller state 1
+        0 0 0   0 0 1];    % controller state 2
+Dmat = [0   0; ...   % displacement
+        1/m 0; ... % acceleration
+        0   0; ...   % force
+        0   0; ...   % controller state 1
+        0   0];      % controller state 2
+
+xd = @(t,x)(nonlinear_ode(t,x,um_data,0.001,m,kact,bet,alph,Ac,Bc,Cc,Dc));
+[T,X] = ode45(xd, 0:0.01:45, zeros(6,1));
+T = T'; X = X';
+y_meas = Cmat*xm_data + Dmat*um_data;
+u_comp = interp1(t_meas, um_data', T)';
+y_comp = Cmat*X + Dmat*u_comp;
+y_lin = lsim(ss(Amat,Bmat,Cmat,Dmat),u_comp',T')';
+figure(101), 
+    plot(t_meas, y_meas(2,:), 'b', T, y_comp(2,:), 'r', T, y_lin(2,:), 'k')
+
+y_meas_ = interp1(t_meas,y_meas',T')';
+
+return
+
 % Create CasADi interpolants
 xm_fun = interpolant('xm','linear',{t_meas}, xm_data(:));
 ym_fun = interpolant('ym','linear',{t_meas}, ym_data(:));
@@ -93,10 +133,13 @@ nx = 6; ny = 5; nu = 2;
 % Build parametrization of flow function, g, in terms of hat basis
 % functions
 % ---- build knots and step
-M = 21; 
-xmax = max(abs(xm_data(4,:))) + 0.1;
-rknots = linspace(-2*xmax, 2*xmax, M);   % knot centers
-hr = rknots(2)-rknots(1);
+M = 5;
+rknots = quantile_knots(xm_data(4,:),M);
+
+% ---- Precompute symbolic basis evaluation function
+x4_sym = MX.sym('x4');
+Phi_sym = basis_eval_symbolic(x4_sym, rknots);  % deg+1 elements
+Phi_fun = Function('Phi_fun', {x4_sym}, {Phi_sym});
 
 % ---- coefficients, theta, of the hat basis functions 
 % g(x) = \sum_i=1^M theta(i) phi_i(x)
@@ -107,39 +150,10 @@ opti.set_initial(theta, theta0);
 % ---- monotonicity constraints
 opti.subject_to( theta(2:end) >= theta(1:end-1) );
 
-% (optional) set simple bounds around init to help solver
-tol = 0.5; % e.g. allow 10x variation; tune as needed
-opti.subject_to( theta >= theta0 - tol*abs(theta0) );
-opti.subject_to( theta <= theta0 + tol*abs(theta0) );
-
-% ---- function to evaluate g at a CasADi symbolic x (MX or SX)
-% We'll return Phi_x (Mx1) so g = theta' * Phi_x
-function Phi_x = basis_eval_symbolic(x, r, h, M)
-    import casadi.*
-    Phi_x = MX.zeros(M,1);
-    for j=1:M
-        z = (x - r(j))/h;
-        % hat value: max(0, 1 - abs(z))
-        % In CasADi use if_else to implement max smoothly (this is OK)
-        Phi_x(j) = if_else(abs(z) < 1, 1 - abs(z), 0);
-    end
-end
-
-% System matrices
-Ac = controller.A;
-Bc = controller.B;
-Cc = controller.C;
-Dc = controller.D;
-Cmat = [1 0 0   0 0 0; ... % displacement
-        0 0 1/m 0 0 0; ... % acceleration
-        0 0 1   0 0 0; ... % force
-        0 0 0   0 1 0; ... % controller state 1
-        0 0 0   0 0 1];    % controller state 2
-Dmat = [0   0; ...   % displacement
-        1/m 0; ... % acceleration
-        0   0; ...   % force
-        0   0; ...   % controller state 1
-        0   0];      % controller state 2
+% ---- set simple bounds around init to help solver
+% tol = 10; % e.g. allow 10x variation; tune as needed
+% opti.subject_to( theta >= theta0 - tol*abs(theta0) );
+% opti.subject_to( theta <= theta0 + tol*abs(theta0) );
 
 % Cost function matrices
 Q = opti.parameter(5,5);
@@ -153,13 +167,13 @@ dt = 0.01;
 N = T/dt;
 
 % Decision variables and cost
-X = cell(N+1,1); P = cell(N,1);
+X = cell(N+1,1);
 J = 0;
 
 % Initial condition
 Xk = opti.variable(nx); X{1} = Xk; opti.set_initial(Xk, xm_fun(0));
 
-for k = 1:N
+for k = 1:N % over all the sample intervals
     if (mod(k,100)==0)
         fprintf('At time step %d\n',k);
     end
@@ -187,7 +201,7 @@ for k = 1:N
         u_mj = um_fun(t_j); % fixed measured input
         
         x4_j = Xc{j}(4);  % 4th state is x4
-        Phi_x4_j = basis_eval_symbolic(x4_j, rknots, hr, M);
+        Phi_x4_j = Phi_fun(Xc{j}(4));
         g_j = theta' * Phi_x4_j;
         
         % Build dynamics manually with g_j in place of p3*x4
@@ -224,12 +238,12 @@ for k = 1:N
     end
 end
 
-% ---- Add smoothness regularization to objective J
-lambda = opti.parameter(1,1);
-opti.set_value(lambda, 1e-2);
-for j=1:M-1
-    J = J + lambda * (theta(j+1) - theta(j))^2;
-end
+% % ---- Add smoothness regularization to objective J
+% lambda = opti.parameter(1,1);
+% opti.set_value(lambda, 1e-2);
+% for j=1:M-1
+%     J = J + lambda * (theta(j+1) - theta(j))^2;
+% end
 
 opti.minimize(J);
 
@@ -279,15 +293,11 @@ figure(107),
     plot(t_meas, xm_data(4,:), (0:N)*dt, x_opt(4,:)), grid on
     title('x_v')
 
-g_vals = zeros(1, N+1);
-for k = 1:N+1
-    Phi_x4_k = zeros(M,1);
-    for j = 1:M
-        z = (x_opt(4,k) - rknots(j))/hr;
-        Phi_x4_k(j) = max(0, 1 - abs(z));
-    end
-    g_vals(k) = theta_opt' * Phi_x4_k;
+Phi_mat = zeros(N+1, length(rknots));
+for i = 1:N+1
+    Phi_mat(i, :) = full(Phi_fun(x_opt(4,i)))';
 end
+g_vals = Phi_mat*theta_opt;
 
 figure(301),
     plot(x_opt(4,:), g_vals, 'x');
