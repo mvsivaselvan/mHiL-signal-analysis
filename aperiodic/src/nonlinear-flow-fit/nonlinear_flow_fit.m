@@ -104,9 +104,22 @@ u_comp = interp1(t_meas, um_data', T)';
 y_comp = Cmat*X + Dmat*u_comp;
 y_lin = lsim(ss(Amat,Bmat,Cmat,Dmat),u_comp',T')';
 figure(101), 
-    plot(t_meas, y_meas(2,:), 'b', T, y_comp(2,:), 'r', T, y_lin(2,:), 'k')
-
+    plot(t_meas, y_meas(2,:), T, y_comp(2,:))
+return
 y_meas_ = interp1(t_meas,y_meas',T')';
+
+figure(201), 
+    plot(t_meas, ym_data(2,:), T, y_comp(2,:)), 
+    set(gca, 'xlim', [31 33.5]), 
+    grid on,
+    title('Acceleration')
+
+
+figure(202), 
+    plot(t_meas, xm_data(4,:), T, X(4,:)), 
+    set(gca, 'xlim', [31 33.5]), 
+    grid on,
+    title('Valve command')
 
 return
 

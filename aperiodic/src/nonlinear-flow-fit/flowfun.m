@@ -1,7 +1,7 @@
 function q = flowfun(xv)
 
-rknots = [-2 -0.25 0.25 2]';
-theta = [-58950 -2950 2950 58950]';
+rknots = [-2 -0.5 -0.25 0.25 0.5 2]';
+theta = [-58950 -8000 -2950 2950 8000 58950]';
 Phi = hatfun(xv, rknots);
 q = Phi*theta;
 
