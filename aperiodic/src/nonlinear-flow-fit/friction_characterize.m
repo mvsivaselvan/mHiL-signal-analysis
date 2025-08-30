@@ -94,3 +94,5 @@ figure(104),
     plot(vel_fine(7950:11000), F_diff(7950:11000), ...
          vel_fine(36000:38000), F_diff(36000:38000));
     
+figure(105),
+    plot(vel_fine(7950:11000), [F_diff(7950:11000) 100*tanh(100*vel_fine(7950:11000))])

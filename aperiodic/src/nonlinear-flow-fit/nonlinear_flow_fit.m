@@ -97,30 +97,12 @@ Dmat = [0   0; ...   % displacement
         0   0];      % controller state 2
 
 xd = @(t,x)(nonlinear_ode(t,x,um_data,0.001,m,kact,bet,alph,Ac,Bc,Cc,Dc));
-[T,X] = ode45(xd, 0:0.01:45, zeros(6,1));
+[T,X] = ode15s(xd, 0:0.001:11, zeros(6,1));
 T = T'; X = X';
-y_meas = Cmat*xm_data + Dmat*um_data;
-u_comp = interp1(t_meas, um_data', T)';
-y_comp = Cmat*X + Dmat*u_comp;
-y_lin = lsim(ss(Amat,Bmat,Cmat,Dmat),u_comp',T')';
-figure(101), 
-    plot(t_meas, y_meas(2,:), T, y_comp(2,:))
-return
-y_meas_ = interp1(t_meas,y_meas',T')';
-
-figure(201), 
-    plot(t_meas, ym_data(2,:), T, y_comp(2,:)), 
-    set(gca, 'xlim', [31 33.5]), 
-    grid on,
-    title('Acceleration')
-
-
-figure(202), 
-    plot(t_meas, xm_data(4,:), T, X(4,:)), 
-    set(gca, 'xlim', [31 33.5]), 
-    grid on,
-    title('Valve command')
-
+y_comp = Cmat*X + Dmat*um_data(:,1:11001);
+y_comp(2,:) = y_comp(2,:) - 40*tanh(100*X(2,:))/m;
+figure(102), 
+    plot(t_meas(1:11001), ym_data(2,1:11001), T, y_comp(2,:))
 return
 
 % Create CasADi interpolants
